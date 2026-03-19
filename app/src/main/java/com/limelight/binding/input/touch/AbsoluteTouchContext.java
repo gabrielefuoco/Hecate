@@ -54,25 +54,25 @@ public class AbsoluteTouchContext implements TouchContext {
         return true;
     }
 
-    private void cachePointerLocation(int pointerId, float eventX, float eventY) {
+    private void cachePointerLocation(int pointerId, float viewX, float viewY) {
         if (pointerId < 0 || pointerId >= MAX_TOUCH_POINTS) {
             return;
         }
 
         synchronized (AbsoluteTouchContext.class) {
-            float[] scaledCoordinates = scaleToWindowsAbsolute(targetView, eventX, eventY, true);
+            float[] scaledCoordinates = scaleToWindowsAbsolute(targetView, viewX, viewY, true);
             activePointerX[pointerId] = scaledCoordinates[0];
             activePointerY[pointerId] = scaledCoordinates[1];
             pointerActive[pointerId] = true;
         }
     }
 
-    static float[] scaleToWindowsAbsolute(View targetView, float rawX, float rawY, boolean isViewRelative) {
+    static float[] scaleToWindowsAbsolute(View targetView, float x, float y, boolean isViewRelative) {
         int width = Math.max(targetView.getWidth(), 1);
         int height = Math.max(targetView.getHeight(), 1);
 
-        float localX = isViewRelative ? rawX : rawX - targetView.getX();
-        float localY = isViewRelative ? rawY : rawY - targetView.getY();
+        float localX = isViewRelative ? x : x - targetView.getX();
+        float localY = isViewRelative ? y : y - targetView.getY();
 
         float normalizedX = Math.max(0.0f, Math.min(localX, width)) / width;
         float normalizedY = Math.max(0.0f, Math.min(localY, height)) / height;
