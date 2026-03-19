@@ -3083,7 +3083,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                         return true;
                     }
 
-                    if (prefConfig.enableMultiTouchGestures || !prefConfig.enableMultiTouchScreen) {
+                    if (shouldHandleLegacyMultiTouchGestures(prefConfig.enableMultiTouchScreen)) {
                         int pointerCount = event.getPointerCount();
                         if (pointerCount > 2) {
                             int eventAction = event.getActionMasked();
@@ -3116,6 +3116,10 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
         // Unknown class
         return false;
+    }
+
+    static boolean shouldHandleLegacyMultiTouchGestures(boolean enableMultiTouchScreen) {
+        return !enableMultiTouchScreen;
     }
 
     private boolean handleTouchInput(MotionEvent event, TouchContext[] inputContextMap, boolean isTouchScreen) {
