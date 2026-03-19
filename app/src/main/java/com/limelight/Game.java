@@ -3083,7 +3083,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                         return true;
                     }
 
-                    if (prefConfig.enableMultiTouchGestures || !prefConfig.enableMultiTouchScreen) {
+                    if (shouldHandleLegacyMultiTouchGestures(prefConfig.enableMultiTouchScreen)) {
                         int pointerCount = event.getPointerCount();
                         if (pointerCount > 2) {
                             int eventAction = event.getActionMasked();
@@ -3116,6 +3116,18 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
 
         // Unknown class
         return false;
+    }
+
+    /**
+     * Returns whether Android-side legacy multi-finger gesture shortcuts should be evaluated.
+     * <p>
+     * When native multi-touch screen mode is enabled, gesture interpretation must be delegated
+     * to the host OS via raw touch events, so legacy gesture interception is disabled.
+     *
+     * @param enableMultiTouchScreen true when native touchscreen packet forwarding is enabled
+     */
+    static boolean shouldHandleLegacyMultiTouchGestures(boolean enableMultiTouchScreen) {
+        return !enableMultiTouchScreen;
     }
 
     private boolean handleTouchInput(MotionEvent event, TouchContext[] inputContextMap, boolean isTouchScreen) {
@@ -3185,6 +3197,13 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                         float[] normalizedCoords = getNormalizedCoordinates(streamContainer, currentX, currentY);
                         currentX = (int)normalizedCoords[0];
                         currentY = (int)normalizedCoords[1];
+                        float contactAreaNormalizationDenominator = Math.max(streamContainer.getWidth(), streamContainer.getHeight());
+                        aTouchContextMap.updateTouchMetadata(
+                                getPressureOrDistance(event, aActionIndex),
+                                event.getTouchMajor(aActionIndex) / Math.max(contactAreaNormalizationDenominator, 1f),
+                                event.getTouchMinor(aActionIndex) / Math.max(contactAreaNormalizationDenominator, 1f),
+                                getRotationDegrees(event, aActionIndex)
+                        );
                     }
 
                     // Invert axis again since synthetic events are not inverted
@@ -3214,6 +3233,13 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             float[] normalizedCoords = getNormalizedCoordinates(streamContainer, eventX, eventY);
             eventX = (int)normalizedCoords[0];
             eventY = (int)normalizedCoords[1];
+            float contactAreaNormalizationDenominator = Math.max(streamContainer.getWidth(), streamContainer.getHeight());
+            context.updateTouchMetadata(
+                    getPressureOrDistance(event, actualActionIndex),
+                    event.getTouchMajor(actualActionIndex) / Math.max(contactAreaNormalizationDenominator, 1f),
+                    event.getTouchMinor(actualActionIndex) / Math.max(contactAreaNormalizationDenominator, 1f),
+                    getRotationDegrees(event, actualActionIndex)
+            );
         }
 
         switch (eventAction)

@@ -1,89 +1,40 @@
 package com.limelight.binding.input.touch;
 
-import android.os.Handler;
-import android.os.Looper;
 import android.view.View;
 
+import androidx.annotation.VisibleForTesting;
+
 import com.limelight.nvstream.NvConnection;
-import com.limelight.nvstream.input.MouseButtonPacket;
+import com.limelight.nvstream.jni.MoonBridge;
 
 public class AbsoluteTouchContext implements TouchContext {
-    private int lastTouchDownX = 0;
-    private int lastTouchDownY = 0;
-    private long lastTouchDownTime = 0;
-    private int lastTouchUpX = 0;
-    private int lastTouchUpY = 0;
-    private long lastTouchUpTime = 0;
-    private int lastTouchLocationX = 0;
-    private int lastTouchLocationY = 0;
+    private static final int MAX_TOUCH_POINTS = 16;
+    private static final int WINDOWS_COORDINATE_MAX = 65535;
+    private static final float DEFAULT_PRESSURE = 1.0f;
+    private static final float DEFAULT_CONTACT_AREA = 0.0f;
+    private static final short DEFAULT_ROTATION = MoonBridge.LI_ROT_UNKNOWN;
+
+    private static final float[] activePointerX = new float[MAX_TOUCH_POINTS];
+    private static final float[] activePointerY = new float[MAX_TOUCH_POINTS];
+    private static final float[] activePointerPressure = new float[MAX_TOUCH_POINTS];
+    private static final float[] activePointerContactAreaMajor = new float[MAX_TOUCH_POINTS];
+    private static final float[] activePointerContactAreaMinor = new float[MAX_TOUCH_POINTS];
+    private static final short[] activePointerRotation = new short[MAX_TOUCH_POINTS];
+    private static final boolean[] pointerActive = new boolean[MAX_TOUCH_POINTS];
+
     private boolean cancelled;
-    private boolean confirmedLongPress;
-    private boolean confirmedTap;
-    
-    private final byte buttonPrimary;
-    private final byte buttonSecondary;
-
-    private final Runnable longPressRunnable = new Runnable() {
-        @Override
-        public void run() {
-            // This timer should have already expired, but cancel it just in case
-            cancelTapDownTimer();
-
-            // Switch from a left click to a right click after a long press
-            confirmedLongPress = true;
-            if (confirmedTap) {
-                conn.sendMouseButtonUp(buttonPrimary);
-            }
-            conn.sendMouseButtonDown(buttonSecondary);
-        }
-    };
-
-    private final Runnable tapDownRunnable = new Runnable() {
-        @Override
-        public void run() {
-            // Start our tap
-            tapConfirmed();
-        }
-    };
+    private int pointerCount;
 
     private final NvConnection conn;
     private final int actionIndex;
     private final View targetView;
-    private final Handler handler;
 
-    private final Runnable leftButtonUpRunnable = new Runnable() {
-        @Override
-        public void run() {
-            conn.sendMouseButtonUp(buttonPrimary);
-        }
-    };
-
-    private static final int SCROLL_SPEED_FACTOR = 3;
-
-    private static final int LONG_PRESS_TIME_THRESHOLD = 650;
-    private static final int LONG_PRESS_DISTANCE_THRESHOLD = 30;
-
-    private static final int DOUBLE_TAP_TIME_THRESHOLD = 250;
-    private static final int DOUBLE_TAP_DISTANCE_THRESHOLD = 60;
-
-    private static final int TOUCH_DOWN_DEAD_ZONE_TIME_THRESHOLD = 100;
-    private static final int TOUCH_DOWN_DEAD_ZONE_DISTANCE_THRESHOLD = 20;
-
+    @SuppressWarnings("unused")
     public AbsoluteTouchContext(NvConnection conn, int actionIndex, View view, boolean swapped)
     {
         this.conn = conn;
         this.actionIndex = actionIndex;
         this.targetView = view;
-        this.handler = new Handler(Looper.getMainLooper());
-
-        if (swapped) {
-            buttonPrimary = MouseButtonPacket.BUTTON_RIGHT;
-            buttonSecondary = MouseButtonPacket.BUTTON_LEFT;
-        }
-        else {
-            buttonPrimary = MouseButtonPacket.BUTTON_LEFT;
-            buttonSecondary = MouseButtonPacket.BUTTON_RIGHT;
-        }
     }
 
     @Override
@@ -96,37 +47,79 @@ public class AbsoluteTouchContext implements TouchContext {
     public boolean touchDownEvent(int eventX, int eventY, long eventTime, boolean isNewFinger)
     {
         if (!isNewFinger) {
-            // We don't handle finger transitions for absolute mode
             return true;
         }
 
-        lastTouchLocationX = lastTouchDownX = eventX;
-        lastTouchLocationY = lastTouchDownY = eventY;
-        lastTouchDownTime = eventTime;
-        cancelled = confirmedTap = confirmedLongPress = false;
+        cancelled = false;
 
-        if (actionIndex == 0) {
-            // Start the timers
-            startTapDownTimer();
-            startLongPressTimer();
-        }
+        cachePointerLocation(actionIndex, eventX, eventY);
+        conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_DOWN, actionIndex,
+                activePointerX[actionIndex], activePointerY[actionIndex],
+                activePointerPressure[actionIndex], activePointerContactAreaMajor[actionIndex],
+                activePointerContactAreaMinor[actionIndex], activePointerRotation[actionIndex]);
 
         return true;
     }
 
-    private boolean distanceExceeds(int deltaX, int deltaY, double limit) {
-        return Math.sqrt(Math.pow(deltaX, 2) + Math.pow(deltaY, 2)) > limit;
+    private void cachePointerLocation(int pointerId, float x, float y) {
+        if (pointerId < 0 || pointerId >= MAX_TOUCH_POINTS) {
+            return;
+        }
+
+        synchronized (AbsoluteTouchContext.class) {
+            float[] scaledCoordinates = scaleToWindowsAbsolute(targetView, x, y, true);
+            activePointerX[pointerId] = scaledCoordinates[0];
+            activePointerY[pointerId] = scaledCoordinates[1];
+            pointerActive[pointerId] = true;
+        }
     }
 
-    private void updatePosition(int eventX, int eventY) {
-        // We may get values slightly outside our view region on ACTION_HOVER_ENTER and ACTION_HOVER_EXIT.
-        // Normalize these to the view size. We can't just drop them because we won't always get an event
-        // right at the boundary of the view, so dropping them would result in our cursor never really
-        // reaching the sides of the screen.
-        eventX = Math.min(Math.max(eventX, 0), targetView.getWidth());
-        eventY = Math.min(Math.max(eventY, 0), targetView.getHeight());
+    private void cachePointerMetadata(int pointerId, float pressureOrDistance, float contactAreaMajor,
+                                      float contactAreaMinor, short rotation) {
+        if (pointerId < 0 || pointerId >= MAX_TOUCH_POINTS) {
+            return;
+        }
 
-        conn.sendMousePosition((short)eventX, (short)eventY, (short)targetView.getWidth(), (short)targetView.getHeight());
+        synchronized (AbsoluteTouchContext.class) {
+            activePointerPressure[pointerId] = Math.max(pressureOrDistance, 0.0f);
+            activePointerContactAreaMajor[pointerId] = Math.max(contactAreaMajor, 0.0f);
+            activePointerContactAreaMinor[pointerId] = Math.max(contactAreaMinor, 0.0f);
+            activePointerRotation[pointerId] = rotation;
+        }
+    }
+
+    /**
+     * Maps Android touch coordinates to the Windows absolute touch space (0-65535 quantized).
+     * The target view is expected to be the stream content viewport (StreamContainer), which is
+     * already measured to the stream aspect ratio in FIT mode, so black bars remain outside this
+     * coordinate space.
+     * If coordinates are not view-relative, this method subtracts the target view offset first
+     * so letterboxed/padded layouts are handled correctly.
+     */
+    static float[] scaleToWindowsAbsolute(View targetView, float x, float y, boolean isViewRelative) {
+        int width = Math.max(targetView.getWidth(), 1);
+        int height = Math.max(targetView.getHeight(), 1);
+
+        float localX = isViewRelative ? x : x - targetView.getX();
+        float localY = isViewRelative ? y : y - targetView.getY();
+
+        float normalizedX = Math.max(0.0f, Math.min(localX, width)) / width;
+        float normalizedY = Math.max(0.0f, Math.min(localY, height)) / height;
+
+        // Quantize to Windows 16-bit absolute touch coordinates, then convert back to normalized
+        // floats because sendTouchEvent() expects normalized X/Y in the Java API.
+        int x16 = Math.round(normalizedX * WINDOWS_COORDINATE_MAX);
+        int y16 = Math.round(normalizedY * WINDOWS_COORDINATE_MAX);
+
+        return new float[] {
+                x16 / (float)WINDOWS_COORDINATE_MAX,
+                y16 / (float)WINDOWS_COORDINATE_MAX
+        };
+    }
+
+    @Override
+    public void updateTouchMetadata(float pressureOrDistance, float contactAreaMajor, float contactAreaMinor, short rotation) {
+        cachePointerMetadata(actionIndex, pressureOrDistance, contactAreaMajor, contactAreaMinor, rotation);
     }
 
     @Override
@@ -136,69 +129,17 @@ public class AbsoluteTouchContext implements TouchContext {
             return;
         }
 
-        if (actionIndex == 0) {
-            // Cancel the timers
-            cancelLongPressTimer();
-            cancelTapDownTimer();
-
-            // Raise the mouse buttons that we currently have down
-            if (confirmedLongPress) {
-                conn.sendMouseButtonUp(buttonSecondary);
-            }
-            else if (confirmedTap) {
-                conn.sendMouseButtonUp(buttonPrimary);
-            }
-            else {
-                // If we get here, this means that the tap completed within the touch down
-                // deadzone time. We'll need to send the touch down and up events now at the
-                // original touch down position.
-                tapConfirmed();
-
-                // Release the left mouse button in 100ms to allow for apps that use polling
-                // to detect mouse button presses.
-                handler.removeCallbacks(leftButtonUpRunnable);
-                handler.postDelayed(leftButtonUpRunnable, 100);
+        if (actionIndex >= 0 && actionIndex < MAX_TOUCH_POINTS) {
+            cachePointerLocation(actionIndex, eventX, eventY);
+            conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_UP, actionIndex,
+                    activePointerX[actionIndex], activePointerY[actionIndex],
+                    activePointerPressure[actionIndex], activePointerContactAreaMajor[actionIndex],
+                    activePointerContactAreaMinor[actionIndex], activePointerRotation[actionIndex]);
+            synchronized (AbsoluteTouchContext.class) {
+                pointerActive[actionIndex] = false;
             }
         }
 
-        lastTouchLocationX = lastTouchUpX = eventX;
-        lastTouchLocationY = lastTouchUpY = eventY;
-        lastTouchUpTime = eventTime;
-    }
-
-    private void startLongPressTimer() {
-        cancelLongPressTimer();
-        handler.postDelayed(longPressRunnable, LONG_PRESS_TIME_THRESHOLD);
-    }
-
-    private void cancelLongPressTimer() {
-        handler.removeCallbacks(longPressRunnable);
-    }
-
-    private void startTapDownTimer() {
-        cancelTapDownTimer();
-        handler.postDelayed(tapDownRunnable, TOUCH_DOWN_DEAD_ZONE_TIME_THRESHOLD);
-    }
-
-    private void cancelTapDownTimer() {
-        handler.removeCallbacks(tapDownRunnable);
-    }
-
-    private void tapConfirmed() {
-        if (confirmedTap || confirmedLongPress) {
-            return;
-        }
-
-        confirmedTap = true;
-        cancelTapDownTimer();
-
-        // Left button down at original position
-        if (lastTouchDownTime - lastTouchUpTime > DOUBLE_TAP_TIME_THRESHOLD ||
-                distanceExceeds(lastTouchDownX - lastTouchUpX, lastTouchDownY - lastTouchUpY, DOUBLE_TAP_DISTANCE_THRESHOLD)) {
-            // Don't reposition for finger down events within the deadzone. This makes double-clicking easier.
-            updatePosition(lastTouchDownX, lastTouchDownY);
-        }
-        conn.sendMouseButtonDown(buttonPrimary);
     }
 
     @Override
@@ -208,24 +149,25 @@ public class AbsoluteTouchContext implements TouchContext {
             return true;
         }
 
-        if (actionIndex == 0) {
-            if (distanceExceeds(eventX - lastTouchDownX, eventY - lastTouchDownY, LONG_PRESS_DISTANCE_THRESHOLD)) {
-                // Moved too far since touch down. Cancel the long press timer.
-                cancelLongPressTimer();
-            }
+        cachePointerLocation(actionIndex, eventX, eventY);
 
-            // Ignore motion within the deadzone period after touch down
-            if (confirmedTap || distanceExceeds(eventX - lastTouchDownX, eventY - lastTouchDownY, TOUCH_DOWN_DEAD_ZONE_DISTANCE_THRESHOLD)) {
-                tapConfirmed();
-                updatePosition(eventX, eventY);
-            }
-        }
-        else if (actionIndex == 1) {
-            conn.sendMouseHighResScroll((short)((eventY - lastTouchLocationY) * SCROLL_SPEED_FACTOR));
+        if (actionIndex != 0) {
+            return true;
         }
 
-        lastTouchLocationX = eventX;
-        lastTouchLocationY = eventY;
+        int pointerLimit = Math.min(Math.max(pointerCount, 1), MAX_TOUCH_POINTS);
+        synchronized (AbsoluteTouchContext.class) {
+            for (int pointerId = 0; pointerId < pointerLimit; pointerId++) {
+                if (!pointerActive[pointerId]) {
+                    continue;
+                }
+
+                conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_MOVE, pointerId,
+                        activePointerX[pointerId], activePointerY[pointerId],
+                        activePointerPressure[pointerId], activePointerContactAreaMajor[pointerId],
+                        activePointerContactAreaMinor[pointerId], activePointerRotation[pointerId]);
+            }
+        }
 
         return true;
     }
@@ -233,17 +175,14 @@ public class AbsoluteTouchContext implements TouchContext {
     @Override
     public void cancelTouch() {
         cancelled = true;
-
-        // Cancel the timers
-        cancelLongPressTimer();
-        cancelTapDownTimer();
-
-        // Raise the mouse buttons
-        if (confirmedLongPress) {
-            conn.sendMouseButtonUp(buttonSecondary);
-        }
-        else if (confirmedTap) {
-            conn.sendMouseButtonUp(buttonPrimary);
+        if (actionIndex >= 0 && actionIndex < MAX_TOUCH_POINTS) {
+            conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_CANCEL, actionIndex,
+                    activePointerX[actionIndex], activePointerY[actionIndex],
+                    activePointerPressure[actionIndex], activePointerContactAreaMajor[actionIndex],
+                    activePointerContactAreaMinor[actionIndex], activePointerRotation[actionIndex]);
+            synchronized (AbsoluteTouchContext.class) {
+                pointerActive[actionIndex] = false;
+            }
         }
     }
 
@@ -254,8 +193,21 @@ public class AbsoluteTouchContext implements TouchContext {
 
     @Override
     public void setPointerCount(int pointerCount) {
-        if (actionIndex == 0 && pointerCount > 1) {
-            cancelTouch();
+        this.pointerCount = Math.max(pointerCount, 0);
+    }
+
+    @VisibleForTesting
+    static void resetPointerCacheForTest() {
+        synchronized (AbsoluteTouchContext.class) {
+            for (int i = 0; i < MAX_TOUCH_POINTS; i++) {
+                activePointerX[i] = 0.0f;
+                activePointerY[i] = 0.0f;
+                activePointerPressure[i] = DEFAULT_PRESSURE;
+                activePointerContactAreaMajor[i] = DEFAULT_CONTACT_AREA;
+                activePointerContactAreaMinor[i] = DEFAULT_CONTACT_AREA;
+                activePointerRotation[i] = DEFAULT_ROTATION;
+                pointerActive[i] = false;
+            }
         }
     }
 }
