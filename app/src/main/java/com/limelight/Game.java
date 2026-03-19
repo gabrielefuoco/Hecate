@@ -3197,6 +3197,13 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                         float[] normalizedCoords = getNormalizedCoordinates(streamContainer, currentX, currentY);
                         currentX = (int)normalizedCoords[0];
                         currentY = (int)normalizedCoords[1];
+                        float contactAreaNormalizationDenominator = Math.max(streamContainer.getWidth(), streamContainer.getHeight());
+                        aTouchContextMap.updateTouchMetadata(
+                                getPressureOrDistance(event, aActionIndex),
+                                event.getTouchMajor(aActionIndex) / Math.max(contactAreaNormalizationDenominator, 1f),
+                                event.getTouchMinor(aActionIndex) / Math.max(contactAreaNormalizationDenominator, 1f),
+                                getRotationDegrees(event, aActionIndex)
+                        );
                     }
 
                     // Invert axis again since synthetic events are not inverted
@@ -3226,6 +3233,13 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             float[] normalizedCoords = getNormalizedCoordinates(streamContainer, eventX, eventY);
             eventX = (int)normalizedCoords[0];
             eventY = (int)normalizedCoords[1];
+            float contactAreaNormalizationDenominator = Math.max(streamContainer.getWidth(), streamContainer.getHeight());
+            context.updateTouchMetadata(
+                    getPressureOrDistance(event, actualActionIndex),
+                    event.getTouchMajor(actualActionIndex) / Math.max(contactAreaNormalizationDenominator, 1f),
+                    event.getTouchMinor(actualActionIndex) / Math.max(contactAreaNormalizationDenominator, 1f),
+                    getRotationDegrees(event, actualActionIndex)
+            );
         }
 
         switch (eventAction)

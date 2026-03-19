@@ -11,9 +11,15 @@ public class AbsoluteTouchContext implements TouchContext {
     private static final int MAX_TOUCH_POINTS = 16;
     private static final int WINDOWS_COORDINATE_MAX = 65535;
     private static final float DEFAULT_PRESSURE = 1.0f;
+    private static final float DEFAULT_CONTACT_AREA = 0.0f;
+    private static final short DEFAULT_ROTATION = MoonBridge.LI_ROT_UNKNOWN;
 
     private static final float[] activePointerX = new float[MAX_TOUCH_POINTS];
     private static final float[] activePointerY = new float[MAX_TOUCH_POINTS];
+    private static final float[] activePointerPressure = new float[MAX_TOUCH_POINTS];
+    private static final float[] activePointerContactAreaMajor = new float[MAX_TOUCH_POINTS];
+    private static final float[] activePointerContactAreaMinor = new float[MAX_TOUCH_POINTS];
+    private static final short[] activePointerRotation = new short[MAX_TOUCH_POINTS];
     private static final boolean[] pointerActive = new boolean[MAX_TOUCH_POINTS];
 
     private boolean cancelled;
@@ -49,7 +55,8 @@ public class AbsoluteTouchContext implements TouchContext {
         cachePointerLocation(actionIndex, eventX, eventY);
         conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_DOWN, actionIndex,
                 activePointerX[actionIndex], activePointerY[actionIndex],
-                DEFAULT_PRESSURE, 0.0f, 0.0f, MoonBridge.LI_ROT_UNKNOWN);
+                activePointerPressure[actionIndex], activePointerContactAreaMajor[actionIndex],
+                activePointerContactAreaMinor[actionIndex], activePointerRotation[actionIndex]);
 
         return true;
     }
@@ -67,8 +74,25 @@ public class AbsoluteTouchContext implements TouchContext {
         }
     }
 
+    private void cachePointerMetadata(int pointerId, float pressureOrDistance, float contactAreaMajor,
+                                      float contactAreaMinor, short rotation) {
+        if (pointerId < 0 || pointerId >= MAX_TOUCH_POINTS) {
+            return;
+        }
+
+        synchronized (AbsoluteTouchContext.class) {
+            activePointerPressure[pointerId] = Math.max(pressureOrDistance, 0.0f);
+            activePointerContactAreaMajor[pointerId] = Math.max(contactAreaMajor, 0.0f);
+            activePointerContactAreaMinor[pointerId] = Math.max(contactAreaMinor, 0.0f);
+            activePointerRotation[pointerId] = rotation;
+        }
+    }
+
     /**
      * Maps Android touch coordinates to the Windows absolute touch space (0-65535 quantized).
+     * The target view is expected to be the stream content viewport (StreamContainer), which is
+     * already measured to the stream aspect ratio in FIT mode, so black bars remain outside this
+     * coordinate space.
      * If coordinates are not view-relative, this method subtracts the target view offset first
      * so letterboxed/padded layouts are handled correctly.
      */
@@ -94,6 +118,11 @@ public class AbsoluteTouchContext implements TouchContext {
     }
 
     @Override
+    public void updateTouchMetadata(float pressureOrDistance, float contactAreaMajor, float contactAreaMinor, short rotation) {
+        cachePointerMetadata(actionIndex, pressureOrDistance, contactAreaMajor, contactAreaMinor, rotation);
+    }
+
+    @Override
     public void touchUpEvent(int eventX, int eventY, long eventTime)
     {
         if (cancelled) {
@@ -104,7 +133,8 @@ public class AbsoluteTouchContext implements TouchContext {
             cachePointerLocation(actionIndex, eventX, eventY);
             conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_UP, actionIndex,
                     activePointerX[actionIndex], activePointerY[actionIndex],
-                    DEFAULT_PRESSURE, 0.0f, 0.0f, MoonBridge.LI_ROT_UNKNOWN);
+                    activePointerPressure[actionIndex], activePointerContactAreaMajor[actionIndex],
+                    activePointerContactAreaMinor[actionIndex], activePointerRotation[actionIndex]);
             synchronized (AbsoluteTouchContext.class) {
                 pointerActive[actionIndex] = false;
             }
@@ -134,7 +164,8 @@ public class AbsoluteTouchContext implements TouchContext {
 
                 conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_MOVE, pointerId,
                         activePointerX[pointerId], activePointerY[pointerId],
-                        DEFAULT_PRESSURE, 0.0f, 0.0f, MoonBridge.LI_ROT_UNKNOWN);
+                        activePointerPressure[pointerId], activePointerContactAreaMajor[pointerId],
+                        activePointerContactAreaMinor[pointerId], activePointerRotation[pointerId]);
             }
         }
 
@@ -147,7 +178,8 @@ public class AbsoluteTouchContext implements TouchContext {
         if (actionIndex >= 0 && actionIndex < MAX_TOUCH_POINTS) {
             conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_CANCEL, actionIndex,
                     activePointerX[actionIndex], activePointerY[actionIndex],
-                    DEFAULT_PRESSURE, 0.0f, 0.0f, MoonBridge.LI_ROT_UNKNOWN);
+                    activePointerPressure[actionIndex], activePointerContactAreaMajor[actionIndex],
+                    activePointerContactAreaMinor[actionIndex], activePointerRotation[actionIndex]);
             synchronized (AbsoluteTouchContext.class) {
                 pointerActive[actionIndex] = false;
             }
@@ -170,6 +202,10 @@ public class AbsoluteTouchContext implements TouchContext {
             for (int i = 0; i < MAX_TOUCH_POINTS; i++) {
                 activePointerX[i] = 0.0f;
                 activePointerY[i] = 0.0f;
+                activePointerPressure[i] = DEFAULT_PRESSURE;
+                activePointerContactAreaMajor[i] = DEFAULT_CONTACT_AREA;
+                activePointerContactAreaMinor[i] = DEFAULT_CONTACT_AREA;
+                activePointerRotation[i] = DEFAULT_ROTATION;
                 pointerActive[i] = false;
             }
         }

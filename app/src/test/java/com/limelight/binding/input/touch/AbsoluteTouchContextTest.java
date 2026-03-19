@@ -11,6 +11,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.robolectric.RobolectricTestRunner;
 
 import static org.junit.Assert.assertEquals;
@@ -21,6 +22,7 @@ import static org.mockito.ArgumentMatchers.anyShort;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 @RunWith(RobolectricTestRunner.class)
@@ -71,6 +73,48 @@ public class AbsoluteTouchContextTest {
         verify(conn).sendTouchEvent(eq(MoonBridge.LI_TOUCH_EVENT_MOVE), eq(1), anyFloat(), anyFloat(),
                 anyFloat(), anyFloat(), anyFloat(), anyShort());
         verify(conn, never()).sendMousePosition(anyShort(), anyShort(), anyShort(), anyShort());
+    }
+
+    @Test
+    public void touchMetadataIsForwardedToTouchPackets() {
+        NvConnection conn = mock(NvConnection.class);
+        View view = createView(200, 100, 0, 0);
+        AbsoluteTouchContext context = new AbsoluteTouchContext(conn, 0, view, false);
+
+        context.setPointerCount(1);
+        context.updateTouchMetadata(0.7f, 0.2f, 0.1f, (short) 45);
+        context.touchDownEvent(20, 10, 0L, true);
+        context.touchMoveEvent(30, 20, 10L);
+        context.touchUpEvent(30, 20, 20L);
+
+        ArgumentCaptor<Float> pressureCaptor = ArgumentCaptor.forClass(Float.class);
+        ArgumentCaptor<Float> majorCaptor = ArgumentCaptor.forClass(Float.class);
+        ArgumentCaptor<Float> minorCaptor = ArgumentCaptor.forClass(Float.class);
+        ArgumentCaptor<Short> rotationCaptor = ArgumentCaptor.forClass(Short.class);
+
+        verify(conn, times(3)).sendTouchEvent(
+                org.mockito.ArgumentMatchers.anyByte(),
+                eq(0),
+                anyFloat(),
+                anyFloat(),
+                pressureCaptor.capture(),
+                majorCaptor.capture(),
+                minorCaptor.capture(),
+                rotationCaptor.capture()
+        );
+
+        for (Float pressure : pressureCaptor.getAllValues()) {
+            assertEquals(0.7f, pressure, 0.0001f);
+        }
+        for (Float major : majorCaptor.getAllValues()) {
+            assertEquals(0.2f, major, 0.0001f);
+        }
+        for (Float minor : minorCaptor.getAllValues()) {
+            assertEquals(0.1f, minor, 0.0001f);
+        }
+        for (Short rotation : rotationCaptor.getAllValues()) {
+            assertEquals((short) 45, rotation.shortValue());
+        }
     }
 
     @Test
