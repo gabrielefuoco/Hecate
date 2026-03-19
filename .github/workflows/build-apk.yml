@@ -1,0 +1,39 @@
+name: Build Artemis APK
+
+on:
+  push:
+    branches: [ "master", "feature/native-touch" ]
+  pull_request:
+    branches: [ "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout del codice e dei sottomoduli
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Configurazione Java JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Permessi di esecuzione per Gradle
+        run: chmod +x gradlew
+
+      - name: Compilazione dell'APK (Debug)
+        run: ./gradlew assembleDebug
+
+      - name: Estrazione e Salvataggio dell'APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Artemis-NativeTouch-APK
+          path: app/build/outputs/apk/debug/*.apk
