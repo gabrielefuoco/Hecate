@@ -53,7 +53,7 @@ public class AbsoluteTouchContextTest {
     }
 
     @Test
-    public void touchMoveScansAllActivePointersFromPrimaryContext() {
+    public void touchMoveSendsEventForSecondaryPointerWithoutPrimaryMove() {
         NvConnection conn = mock(NvConnection.class);
         View view = createView(200, 100, 0, 0);
         AbsoluteTouchContext primary = new AbsoluteTouchContext(conn, 0, view, false);
@@ -66,13 +66,37 @@ public class AbsoluteTouchContextTest {
         secondary.touchDownEvent(30, 40, 0L, true);
 
         secondary.touchMoveEvent(35, 45, 10L);
-        primary.touchMoveEvent(15, 25, 10L);
 
-        verify(conn).sendTouchEvent(eq(MoonBridge.LI_TOUCH_EVENT_MOVE), eq(0), anyFloat(), anyFloat(),
-                anyFloat(), anyFloat(), anyFloat(), anyShort());
         verify(conn).sendTouchEvent(eq(MoonBridge.LI_TOUCH_EVENT_MOVE), eq(1), anyFloat(), anyFloat(),
                 anyFloat(), anyFloat(), anyFloat(), anyShort());
+        verify(conn, never()).sendTouchEvent(eq(MoonBridge.LI_TOUCH_EVENT_MOVE), eq(0), anyFloat(), anyFloat(),
+                anyFloat(), anyFloat(), anyFloat(), anyShort());
         verify(conn, never()).sendMousePosition(anyShort(), anyShort(), anyShort(), anyShort());
+    }
+
+    @Test
+    public void newGestureResetsStaleStaticPointerState() {
+        NvConnection conn = mock(NvConnection.class);
+        View view = createView(200, 100, 0, 0);
+        AbsoluteTouchContext pointerZero = new AbsoluteTouchContext(conn, 0, view, false);
+        AbsoluteTouchContext stalePointer = new AbsoluteTouchContext(conn, 5, view, false);
+
+        pointerZero.setPointerCount(2);
+        stalePointer.setPointerCount(2);
+        pointerZero.touchDownEvent(10, 20, 0L, true);
+        stalePointer.touchDownEvent(30, 40, 0L, true);
+
+        pointerZero.touchUpEvent(10, 20, 5L);
+        stalePointer.touchUpEvent(30, 40, 5L);
+
+        pointerZero.setPointerCount(1);
+        pointerZero.touchDownEvent(50, 60, 10L, true);
+        pointerZero.cancelTouch();
+
+        verify(conn, times(2)).sendTouchEvent(eq(MoonBridge.LI_TOUCH_EVENT_UP), eq(0), anyFloat(), anyFloat(),
+                anyFloat(), anyFloat(), anyFloat(), anyShort());
+        verify(conn, times(1)).sendTouchEvent(eq(MoonBridge.LI_TOUCH_EVENT_UP), eq(5), anyFloat(), anyFloat(),
+                anyFloat(), anyFloat(), anyFloat(), anyShort());
     }
 
     @Test
