@@ -23,7 +23,7 @@ public class AbsoluteTouchContext implements TouchContext {
     private static final boolean[] pointerActive = new boolean[MAX_TOUCH_POINTS];
 
     static {
-        resetPointerCacheForTest();
+        initializePointerCache();
     }
 
     private boolean cancelled;
@@ -195,6 +195,10 @@ public class AbsoluteTouchContext implements TouchContext {
 
     @VisibleForTesting
     static void resetPointerCacheForTest() {
+        initializePointerCache();
+    }
+
+    private static void initializePointerCache() {
         resetAllPointerState();
     }
 
