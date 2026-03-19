@@ -22,6 +22,10 @@ public class AbsoluteTouchContext implements TouchContext {
     private static final short[] activePointerRotation = new short[MAX_TOUCH_POINTS];
     private static final boolean[] pointerActive = new boolean[MAX_TOUCH_POINTS];
 
+    static {
+        initializePointerCache();
+    }
+
     private boolean cancelled;
     private int pointerCount;
 
@@ -50,6 +54,10 @@ public class AbsoluteTouchContext implements TouchContext {
             return true;
         }
 
+        if (pointerCount <= 1) {
+            resetAllPointerState();
+        }
+
         cancelled = false;
 
         cachePointerLocation(actionIndex, eventX, eventY);
@@ -66,12 +74,10 @@ public class AbsoluteTouchContext implements TouchContext {
             return;
         }
 
-        synchronized (AbsoluteTouchContext.class) {
-            float[] scaledCoordinates = scaleToWindowsAbsolute(targetView, x, y, true);
-            activePointerX[pointerId] = scaledCoordinates[0];
-            activePointerY[pointerId] = scaledCoordinates[1];
-            pointerActive[pointerId] = true;
-        }
+        float[] scaledCoordinates = scaleToWindowsAbsolute(targetView, x, y, true);
+        activePointerX[pointerId] = scaledCoordinates[0];
+        activePointerY[pointerId] = scaledCoordinates[1];
+        pointerActive[pointerId] = true;
     }
 
     private void cachePointerMetadata(int pointerId, float pressureOrDistance, float contactAreaMajor,
@@ -80,12 +86,10 @@ public class AbsoluteTouchContext implements TouchContext {
             return;
         }
 
-        synchronized (AbsoluteTouchContext.class) {
-            activePointerPressure[pointerId] = Math.max(pressureOrDistance, 0.0f);
-            activePointerContactAreaMajor[pointerId] = Math.max(contactAreaMajor, 0.0f);
-            activePointerContactAreaMinor[pointerId] = Math.max(contactAreaMinor, 0.0f);
-            activePointerRotation[pointerId] = rotation;
-        }
+        activePointerPressure[pointerId] = Math.max(pressureOrDistance, 0.0f);
+        activePointerContactAreaMajor[pointerId] = Math.max(contactAreaMajor, 0.0f);
+        activePointerContactAreaMinor[pointerId] = Math.max(contactAreaMinor, 0.0f);
+        activePointerRotation[pointerId] = rotation;
     }
 
     /**
@@ -135,9 +139,7 @@ public class AbsoluteTouchContext implements TouchContext {
                     activePointerX[actionIndex], activePointerY[actionIndex],
                     activePointerPressure[actionIndex], activePointerContactAreaMajor[actionIndex],
                     activePointerContactAreaMinor[actionIndex], activePointerRotation[actionIndex]);
-            synchronized (AbsoluteTouchContext.class) {
-                pointerActive[actionIndex] = false;
-            }
+            resetPointerState(actionIndex);
         }
 
     }
@@ -149,24 +151,17 @@ public class AbsoluteTouchContext implements TouchContext {
             return true;
         }
 
-        cachePointerLocation(actionIndex, eventX, eventY);
-
-        if (actionIndex != 0) {
+        if (actionIndex < 0 || actionIndex >= MAX_TOUCH_POINTS) {
             return true;
         }
 
-        int pointerLimit = Math.min(Math.max(pointerCount, 1), MAX_TOUCH_POINTS);
-        synchronized (AbsoluteTouchContext.class) {
-            for (int pointerId = 0; pointerId < pointerLimit; pointerId++) {
-                if (!pointerActive[pointerId]) {
-                    continue;
-                }
+        cachePointerLocation(actionIndex, eventX, eventY);
 
-                conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_MOVE, pointerId,
-                        activePointerX[pointerId], activePointerY[pointerId],
-                        activePointerPressure[pointerId], activePointerContactAreaMajor[pointerId],
-                        activePointerContactAreaMinor[pointerId], activePointerRotation[pointerId]);
-            }
+        if (pointerActive[actionIndex]) {
+            conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_MOVE, actionIndex,
+                    activePointerX[actionIndex], activePointerY[actionIndex],
+                    activePointerPressure[actionIndex], activePointerContactAreaMajor[actionIndex],
+                    activePointerContactAreaMinor[actionIndex], activePointerRotation[actionIndex]);
         }
 
         return true;
@@ -175,18 +170,16 @@ public class AbsoluteTouchContext implements TouchContext {
     @Override
     public void cancelTouch() {
         cancelled = true;
-        synchronized (AbsoluteTouchContext.class) {
-            for (int pointerId = 0; pointerId < MAX_TOUCH_POINTS; pointerId++) {
-                if (!pointerActive[pointerId]) {
-                    continue;
-                }
-
-                conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_UP, pointerId,
-                        activePointerX[pointerId], activePointerY[pointerId],
-                        activePointerPressure[pointerId], activePointerContactAreaMajor[pointerId],
-                        activePointerContactAreaMinor[pointerId], activePointerRotation[pointerId]);
-                pointerActive[pointerId] = false;
+        for (int pointerId = 0; pointerId < MAX_TOUCH_POINTS; pointerId++) {
+            if (!pointerActive[pointerId]) {
+                continue;
             }
+
+            conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_UP, pointerId,
+                    activePointerX[pointerId], activePointerY[pointerId],
+                    activePointerPressure[pointerId], activePointerContactAreaMajor[pointerId],
+                    activePointerContactAreaMinor[pointerId], activePointerRotation[pointerId]);
+            resetPointerState(pointerId);
         }
     }
 
@@ -202,16 +195,26 @@ public class AbsoluteTouchContext implements TouchContext {
 
     @VisibleForTesting
     static void resetPointerCacheForTest() {
-        synchronized (AbsoluteTouchContext.class) {
-            for (int i = 0; i < MAX_TOUCH_POINTS; i++) {
-                activePointerX[i] = 0.0f;
-                activePointerY[i] = 0.0f;
-                activePointerPressure[i] = DEFAULT_PRESSURE;
-                activePointerContactAreaMajor[i] = DEFAULT_CONTACT_AREA;
-                activePointerContactAreaMinor[i] = DEFAULT_CONTACT_AREA;
-                activePointerRotation[i] = DEFAULT_ROTATION;
-                pointerActive[i] = false;
-            }
+        initializePointerCache();
+    }
+
+    private static void initializePointerCache() {
+        resetAllPointerState();
+    }
+
+    private static void resetAllPointerState() {
+        for (int i = 0; i < MAX_TOUCH_POINTS; i++) {
+            resetPointerState(i);
         }
+    }
+
+    private static void resetPointerState(int pointerId) {
+        activePointerX[pointerId] = 0.0f;
+        activePointerY[pointerId] = 0.0f;
+        activePointerPressure[pointerId] = DEFAULT_PRESSURE;
+        activePointerContactAreaMajor[pointerId] = DEFAULT_CONTACT_AREA;
+        activePointerContactAreaMinor[pointerId] = DEFAULT_CONTACT_AREA;
+        activePointerRotation[pointerId] = DEFAULT_ROTATION;
+        pointerActive[pointerId] = false;
     }
 }

@@ -3,6 +3,7 @@ package com.limelight.binding.input.touch;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
+import android.view.ViewConfiguration;
 
 import com.limelight.nvstream.NvConnection;
 import com.limelight.nvstream.input.MouseButtonPacket;
@@ -30,6 +31,8 @@ public class RelativeTouchContext implements TouchContext {
     private final View targetView;
     private final PreferenceConfiguration prefConfig;
     private final Handler handler;
+    private final int tapMovementThreshold;
+    private final double tapDistanceThreshold;
 
     private final Runnable dragTimerRunnable = new Runnable() {
         @Override
@@ -84,8 +87,6 @@ public class RelativeTouchContext implements TouchContext {
             }
     };
 
-    private static final int TAP_MOVEMENT_THRESHOLD = 20;
-    private static final int TAP_DISTANCE_THRESHOLD = 25;
     private static final int TAP_TIME_THRESHOLD = 250;
     private static final int DRAG_TIME_THRESHOLD = 650;
 
@@ -102,6 +103,8 @@ public class RelativeTouchContext implements TouchContext {
         this.targetView = view;
         this.prefConfig = prefConfig;
         this.handler = new Handler(Looper.getMainLooper());
+        this.tapMovementThreshold = Math.max(1, ViewConfiguration.get(view.getContext()).getScaledTouchSlop());
+        this.tapDistanceThreshold = tapMovementThreshold * 1.25;
     }
 
     @Override
@@ -114,8 +117,8 @@ public class RelativeTouchContext implements TouchContext {
     {
         int xDelta = Math.abs(touchX - originalTouchX);
         int yDelta = Math.abs(touchY - originalTouchY);
-        return xDelta <= TAP_MOVEMENT_THRESHOLD &&
-                yDelta <= TAP_MOVEMENT_THRESHOLD;
+        return xDelta <= tapMovementThreshold &&
+                yDelta <= tapMovementThreshold;
     }
 
     private boolean isTap(long eventTime)
@@ -223,7 +226,7 @@ public class RelativeTouchContext implements TouchContext {
 
         // Check if we've exceeded the maximum distance moved
         distanceMoved += Math.sqrt(Math.pow(eventX - lastTouchX, 2) + Math.pow(eventY - lastTouchY, 2));
-        if (distanceMoved >= TAP_DISTANCE_THRESHOLD) {
+        if (distanceMoved >= tapDistanceThreshold) {
             confirmedMove = true;
             cancelDragTimer();
             return;
