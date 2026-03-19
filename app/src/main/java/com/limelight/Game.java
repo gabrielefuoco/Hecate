@@ -2725,29 +2725,36 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     }
 
     private boolean trySendTouchEvent(View view, MotionEvent event) {
-        byte eventType = getLiTouchTypeFromEvent(event);
-        if (eventType < 0) {
-            return false;
-        }
+        int action = event.getActionMasked();
+        int actionIndex = event.getActionIndex();
 
-        if (event.getActionMasked() == MotionEvent.ACTION_MOVE) {
-            // Move events may impact all active pointers
-            for (int i = 0; i < event.getPointerCount(); i++) {
-                if (!sendTouchEventForPointer(view, event, eventType, i)) {
-                    return false;
+        switch (action) {
+            case MotionEvent.ACTION_DOWN:
+            case MotionEvent.ACTION_POINTER_DOWN:
+                return sendTouchEventForPointer(view, event, MoonBridge.LI_TOUCH_EVENT_DOWN, actionIndex);
+            case MotionEvent.ACTION_MOVE:
+                // Move events may impact all active pointers
+                for (int i = 0; i < event.getPointerCount(); i++) {
+                    if (!sendTouchEventForPointer(view, event, MoonBridge.LI_TOUCH_EVENT_MOVE, i)) {
+                        return false;
+                    }
                 }
-            }
-            return true;
-        }
-        else if (event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
-            // Cancel impacts all active pointers
-            return conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_CANCEL_ALL, 0,
-                    0, 0, 0, 0, 0,
-                    MoonBridge.LI_ROT_UNKNOWN) != MoonBridge.LI_ERR_UNSUPPORTED;
-        }
-        else {
-            // Up, Down, and Hover events are specific to the action index
-            return sendTouchEventForPointer(view, event, eventType, event.getActionIndex());
+                return true;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_POINTER_UP:
+                return sendTouchEventForPointer(view, event, MoonBridge.LI_TOUCH_EVENT_UP, actionIndex);
+            case MotionEvent.ACTION_CANCEL:
+                // ACTION_CANCEL applies to all active pointers. Send UP for each one
+                // as a safety reset to avoid stale touches on the host.
+                for (int i = 0; i < event.getPointerCount(); i++) {
+                    if (!sendTouchEventForPointer(view, event, MoonBridge.LI_TOUCH_EVENT_UP, i)) {
+                        return false;
+                    }
+                }
+                return true;
+            default:
+                // Not a touch event type we forward here
+                return false;
         }
     }
 
@@ -3072,6 +3079,12 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                         return true;
                     }
 
+                    if (prefConfig.enableMultiTouchScreen && !prefConfig.touchscreenTrackpad && trySendTouchEvent(view, event)) {
+                        // If this host supports touch events and absolute touch is enabled,
+                        // send it directly as a touch event.
+                        return true;
+                    }
+
                     if (isPanZoomMode) {
                         // panning the streamView
                         panZoomHandler.handleTouchEvent(event);
@@ -3098,12 +3111,6 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                                 return true;
                             }
                         }
-                    }
-
-                    if (prefConfig.enableMultiTouchScreen && !prefConfig.touchscreenTrackpad && trySendTouchEvent(view, event)) {
-                        // If this host supports touch events and absolute touch is enabled,
-                        // send it directly as a touch event.
-                        return true;
                     }
 
                     return handleTouchInput(event, touchContextMap, true);

@@ -175,13 +175,17 @@ public class AbsoluteTouchContext implements TouchContext {
     @Override
     public void cancelTouch() {
         cancelled = true;
-        if (actionIndex >= 0 && actionIndex < MAX_TOUCH_POINTS) {
-            conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_CANCEL, actionIndex,
-                    activePointerX[actionIndex], activePointerY[actionIndex],
-                    activePointerPressure[actionIndex], activePointerContactAreaMajor[actionIndex],
-                    activePointerContactAreaMinor[actionIndex], activePointerRotation[actionIndex]);
-            synchronized (AbsoluteTouchContext.class) {
-                pointerActive[actionIndex] = false;
+        synchronized (AbsoluteTouchContext.class) {
+            for (int pointerId = 0; pointerId < MAX_TOUCH_POINTS; pointerId++) {
+                if (!pointerActive[pointerId]) {
+                    continue;
+                }
+
+                conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_UP, pointerId,
+                        activePointerX[pointerId], activePointerY[pointerId],
+                        activePointerPressure[pointerId], activePointerContactAreaMajor[pointerId],
+                        activePointerContactAreaMinor[pointerId], activePointerRotation[pointerId]);
+                pointerActive[pointerId] = false;
             }
         }
     }
