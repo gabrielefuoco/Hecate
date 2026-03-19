@@ -8,10 +8,12 @@ import com.limelight.nvstream.NvConnection;
 import com.limelight.nvstream.jni.MoonBridge;
 
 import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.anyFloat;
@@ -23,6 +25,13 @@ import static org.mockito.Mockito.verify;
 
 @RunWith(RobolectricTestRunner.class)
 public class AbsoluteTouchContextTest {
+    private static final float EXPECTED_CENTER = 0.5f;
+    private static final float SCALING_TOLERANCE = 0.01f;
+
+    @Before
+    public void setUp() {
+        AbsoluteTouchContext.resetPointerCacheForTest();
+    }
 
     @After
     public void tearDown() {
@@ -70,8 +79,8 @@ public class AbsoluteTouchContextTest {
 
         float[] scaled = AbsoluteTouchContext.scaleToWindowsAbsolute(view, 110, 70, false);
 
-        assertTrue(scaled[0] > 0.49f && scaled[0] < 0.51f);
-        assertTrue(scaled[1] > 0.49f && scaled[1] < 0.51f);
+        assertEquals(EXPECTED_CENTER, scaled[0], SCALING_TOLERANCE);
+        assertEquals(EXPECTED_CENTER, scaled[1], SCALING_TOLERANCE);
     }
 
     private static View createView(int width, int height, int x, int y) {

@@ -2,6 +2,8 @@ package com.limelight.binding.input.touch;
 
 import android.view.View;
 
+import androidx.annotation.VisibleForTesting;
+
 import com.limelight.nvstream.NvConnection;
 import com.limelight.nvstream.jni.MoonBridge;
 
@@ -21,6 +23,7 @@ public class AbsoluteTouchContext implements TouchContext {
     private final int actionIndex;
     private final View targetView;
 
+    @SuppressWarnings("unused")
     public AbsoluteTouchContext(NvConnection conn, int actionIndex, View view, boolean swapped)
     {
         this.conn = conn;
@@ -56,10 +59,12 @@ public class AbsoluteTouchContext implements TouchContext {
             return;
         }
 
-        float[] scaledCoordinates = scaleToWindowsAbsolute(targetView, eventX, eventY, true);
-        activePointerX[pointerId] = scaledCoordinates[0];
-        activePointerY[pointerId] = scaledCoordinates[1];
-        pointerActive[pointerId] = true;
+        synchronized (AbsoluteTouchContext.class) {
+            float[] scaledCoordinates = scaleToWindowsAbsolute(targetView, eventX, eventY, true);
+            activePointerX[pointerId] = scaledCoordinates[0];
+            activePointerY[pointerId] = scaledCoordinates[1];
+            pointerActive[pointerId] = true;
+        }
     }
 
     static float[] scaleToWindowsAbsolute(View targetView, float rawX, float rawY, boolean isViewRelative) {
@@ -93,7 +98,9 @@ public class AbsoluteTouchContext implements TouchContext {
             conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_UP, actionIndex,
                     activePointerX[actionIndex], activePointerY[actionIndex],
                     DEFAULT_PRESSURE, 0.0f, 0.0f, MoonBridge.LI_ROT_UNKNOWN);
-            pointerActive[actionIndex] = false;
+            synchronized (AbsoluteTouchContext.class) {
+                pointerActive[actionIndex] = false;
+            }
         }
 
     }
@@ -112,14 +119,16 @@ public class AbsoluteTouchContext implements TouchContext {
         }
 
         int activePointers = Math.min(Math.max(pointerCount, 1), MAX_TOUCH_POINTS);
-        for (int pointerId = 0; pointerId < activePointers; pointerId++) {
-            if (!pointerActive[pointerId]) {
-                continue;
-            }
+        synchronized (AbsoluteTouchContext.class) {
+            for (int pointerId = 0; pointerId < activePointers; pointerId++) {
+                if (!pointerActive[pointerId]) {
+                    continue;
+                }
 
-            conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_MOVE, pointerId,
-                    activePointerX[pointerId], activePointerY[pointerId],
-                    DEFAULT_PRESSURE, 0.0f, 0.0f, MoonBridge.LI_ROT_UNKNOWN);
+                conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_MOVE, pointerId,
+                        activePointerX[pointerId], activePointerY[pointerId],
+                        DEFAULT_PRESSURE, 0.0f, 0.0f, MoonBridge.LI_ROT_UNKNOWN);
+            }
         }
 
         return true;
@@ -132,7 +141,9 @@ public class AbsoluteTouchContext implements TouchContext {
             conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_CANCEL, actionIndex,
                     activePointerX[actionIndex], activePointerY[actionIndex],
                     DEFAULT_PRESSURE, 0.0f, 0.0f, MoonBridge.LI_ROT_UNKNOWN);
-            pointerActive[actionIndex] = false;
+            synchronized (AbsoluteTouchContext.class) {
+                pointerActive[actionIndex] = false;
+            }
         }
     }
 
@@ -146,11 +157,14 @@ public class AbsoluteTouchContext implements TouchContext {
         this.pointerCount = Math.max(pointerCount, 0);
     }
 
+    @VisibleForTesting
     static void resetPointerCacheForTest() {
-        for (int i = 0; i < MAX_TOUCH_POINTS; i++) {
-            activePointerX[i] = 0.0f;
-            activePointerY[i] = 0.0f;
-            pointerActive[i] = false;
+        synchronized (AbsoluteTouchContext.class) {
+            for (int i = 0; i < MAX_TOUCH_POINTS; i++) {
+                activePointerX[i] = 0.0f;
+                activePointerY[i] = 0.0f;
+                pointerActive[i] = false;
+            }
         }
     }
 }
