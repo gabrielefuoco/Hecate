@@ -3118,6 +3118,14 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         return false;
     }
 
+    /**
+     * Returns whether Android-side legacy multi-finger gesture shortcuts should be evaluated.
+     * <p>
+     * When native multi-touch screen mode is enabled, gesture interpretation must be delegated
+     * to the host OS via raw touch events, so legacy gesture interception is disabled.
+     *
+     * @param enableMultiTouchScreen true when native touchscreen packet forwarding is enabled
+     */
     static boolean shouldHandleLegacyMultiTouchGestures(boolean enableMultiTouchScreen) {
         return !enableMultiTouchScreen;
     }
