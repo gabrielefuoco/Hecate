@@ -3072,6 +3072,12 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                         return true;
                     }
 
+                    if (prefConfig.enableMultiTouchScreen && !prefConfig.touchscreenTrackpad && trySendTouchEvent(view, event)) {
+                        // If this host supports touch events and absolute touch is enabled,
+                        // send it directly as a touch event.
+                        return true;
+                    }
+
                     if (isPanZoomMode) {
                         // panning the streamView
                         panZoomHandler.handleTouchEvent(event);
@@ -3098,12 +3104,6 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                                 return true;
                             }
                         }
-                    }
-
-                    if (prefConfig.enableMultiTouchScreen && !prefConfig.touchscreenTrackpad && trySendTouchEvent(view, event)) {
-                        // If this host supports touch events and absolute touch is enabled,
-                        // send it directly as a touch event.
-                        return true;
                     }
 
                     return handleTouchInput(event, touchContextMap, true);
