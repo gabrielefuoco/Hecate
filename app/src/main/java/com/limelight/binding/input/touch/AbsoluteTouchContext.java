@@ -54,19 +54,24 @@ public class AbsoluteTouchContext implements TouchContext {
         return true;
     }
 
-    private void cachePointerLocation(int pointerId, float viewX, float viewY) {
+    private void cachePointerLocation(int pointerId, float x, float y) {
         if (pointerId < 0 || pointerId >= MAX_TOUCH_POINTS) {
             return;
         }
 
         synchronized (AbsoluteTouchContext.class) {
-            float[] scaledCoordinates = scaleToWindowsAbsolute(targetView, viewX, viewY, true);
+            float[] scaledCoordinates = scaleToWindowsAbsolute(targetView, x, y, true);
             activePointerX[pointerId] = scaledCoordinates[0];
             activePointerY[pointerId] = scaledCoordinates[1];
             pointerActive[pointerId] = true;
         }
     }
 
+    /**
+     * Maps Android touch coordinates to the Windows absolute touch space (0-65535 quantized).
+     * If coordinates are not view-relative, this method subtracts the target view offset first
+     * so letterboxed/padded layouts are handled correctly.
+     */
     static float[] scaleToWindowsAbsolute(View targetView, float x, float y, boolean isViewRelative) {
         int width = Math.max(targetView.getWidth(), 1);
         int height = Math.max(targetView.getHeight(), 1);
@@ -77,6 +82,8 @@ public class AbsoluteTouchContext implements TouchContext {
         float normalizedX = Math.max(0.0f, Math.min(localX, width)) / width;
         float normalizedY = Math.max(0.0f, Math.min(localY, height)) / height;
 
+        // Quantize to Windows 16-bit absolute touch coordinates, then convert back to normalized
+        // floats because sendTouchEvent() expects normalized X/Y in the Java API.
         int x16 = Math.round(normalizedX * WINDOWS_COORDINATE_MAX);
         int y16 = Math.round(normalizedY * WINDOWS_COORDINATE_MAX);
 
@@ -118,9 +125,9 @@ public class AbsoluteTouchContext implements TouchContext {
             return true;
         }
 
-        int activePointers = Math.min(Math.max(pointerCount, 1), MAX_TOUCH_POINTS);
+        int pointerLimit = Math.min(Math.max(pointerCount, 1), MAX_TOUCH_POINTS);
         synchronized (AbsoluteTouchContext.class) {
-            for (int pointerId = 0; pointerId < activePointers; pointerId++) {
+            for (int pointerId = 0; pointerId < pointerLimit; pointerId++) {
                 if (!pointerActive[pointerId]) {
                     continue;
                 }
