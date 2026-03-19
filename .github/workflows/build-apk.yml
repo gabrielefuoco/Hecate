@@ -35,5 +35,5 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Artemis-NativeTouch-APK
+          name: Artemis-APK-${{ github.sha }}
           path: app/build/outputs/apk/debug/*.apk
