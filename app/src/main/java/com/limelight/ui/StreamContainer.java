@@ -81,6 +81,9 @@ public class StreamContainer extends FrameLayout implements SurfaceHolder.Callba
 
         // Always craete a surface view as a Workaround for the sizing issue of GLSurfaceView
         mSurfaceView = new StreamView(context);
+        if (mSurfaceView instanceof StreamView) {
+            ((StreamView) mSurfaceView).setPreferenceConfiguration(prefConfig);
+        }
         addView(mSurfaceView, childParams);
 
         if (renderMode != StreamMode.MODE_2D) {

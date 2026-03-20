@@ -25,15 +25,29 @@ public class AbsoluteTouchManager {
         short rotation;
     }
 
-    private void cachePointerData(MotionEvent event, int pointerIndex) {
+    private float scaleX(float x, View targetView) {
+        int width = Math.max(targetView.getWidth(), 1);
+        return Math.max(0.0f, Math.min(x, width)) / (float) width;
+    }
+
+    private float scaleY(float y, View targetView) {
+        int height = Math.max(targetView.getHeight(), 1);
+        return Math.max(0.0f, Math.min(y, height)) / (float) height;
+    }
+
+    private void cachePointerData(MotionEvent event, int pointerIndex, View targetView) {
         int pointerId = event.getPointerId(pointerIndex);
         TouchData data = activePointers.get(pointerId);
         if (data == null) {
             data = new TouchData();
             activePointers.put(pointerId, data);
         }
-        data.x = event.getX(pointerIndex);
-        data.y = event.getY(pointerIndex);
+
+        float offsetX = targetView.getX();
+        float offsetY = targetView.getY();
+
+        data.x = scaleX(event.getX(pointerIndex) - offsetX, targetView);
+        data.y = scaleY(event.getY(pointerIndex) - offsetY, targetView);
         data.pressure = event.getPressure(pointerIndex);
         data.contactMajor = event.getTouchMajor(pointerIndex);
         data.contactMinor = event.getTouchMinor(pointerIndex);
@@ -53,17 +67,16 @@ public class AbsoluteTouchManager {
         int actionIndex = event.getActionIndex();
         int pointerId = event.getPointerId(actionIndex);
 
-        // Coordinated are normalized relative to the target view (stream)
         float offsetX = targetView.getX();
         float offsetY = targetView.getY();
 
         switch (action) {
             case MotionEvent.ACTION_DOWN:
             case MotionEvent.ACTION_POINTER_DOWN:
-                cachePointerData(event, actionIndex);
+                cachePointerData(event, actionIndex, targetView);
                 TouchData data = activePointers.get(pointerId);
                 conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_DOWN, pointerId,
-                        data.x - offsetX, data.y - offsetY, data.pressure,
+                        data.x, data.y, data.pressure,
                         data.contactMajor, data.contactMinor, data.rotation);
                 break;
 
@@ -76,8 +89,8 @@ public class AbsoluteTouchManager {
                     for (int i = 0; i < pointerCount; i++) {
                         int id = event.getPointerId(i);
                         if (activePointers.get(id) != null) {
-                            float hX = event.getHistoricalX(i, h) - offsetX;
-                            float hY = event.getHistoricalY(i, h) - offsetY;
+                            float hX = scaleX(event.getHistoricalX(i, h) - offsetX, targetView);
+                            float hY = scaleY(event.getHistoricalY(i, h) - offsetY, targetView);
                             float hP = event.getHistoricalPressure(i, h);
                             conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_MOVE, id,
                                     hX, hY, hP, 0.0f, 0.0f, (short)0);
@@ -89,10 +102,10 @@ public class AbsoluteTouchManager {
                 for (int i = 0; i < pointerCount; i++) {
                     int id = event.getPointerId(i);
                     if (activePointers.get(id) != null) {
-                        cachePointerData(event, i);
+                        cachePointerData(event, i, targetView);
                         TouchData moveData = activePointers.get(id);
                         conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_MOVE, id,
-                                moveData.x - offsetX, moveData.y - offsetY, moveData.pressure,
+                                moveData.x, moveData.y, moveData.pressure,
                                 moveData.contactMajor, moveData.contactMinor, moveData.rotation);
                     }
                 }
@@ -103,8 +116,14 @@ public class AbsoluteTouchManager {
             case MotionEvent.ACTION_UP: {
                 TouchData upData = activePointers.get(pointerId);
                 if (upData != null) {
+                    // Coordinates are already scaled in TouchData if they were updated in MOVE
+                    // but ACTION_UP/POINTER_UP might happen without a MOVE immediately before.
+                    // Let's ensure upData has current scaled coordinates.
+                    cachePointerData(event, actionIndex, targetView);
+                    upData = activePointers.get(pointerId);
+                    
                     conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_UP, pointerId,
-                            upData.x - offsetX, upData.y - offsetY, 0.0f, 0.0f, 0.0f, (short)0);
+                            upData.x, upData.y, 0.0f, 0.0f, 0.0f, (short)0);
                     clearActivePointer(pointerId);
                 }
                 break;

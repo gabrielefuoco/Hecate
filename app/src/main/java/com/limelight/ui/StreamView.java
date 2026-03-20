@@ -22,16 +22,23 @@ public class StreamView extends SurfaceView {
     private boolean commitTextEnabled = false;
 
     private com.limelight.binding.input.touch.AbsoluteTouchManager absoluteTouchManager;
+    private com.limelight.preferences.PreferenceConfiguration prefConfig;
 
     public void setAbsoluteTouchManager(com.limelight.binding.input.touch.AbsoluteTouchManager manager) {
         this.absoluteTouchManager = manager;
     }
 
+    public void setPreferenceConfiguration(com.limelight.preferences.PreferenceConfiguration prefConfig) {
+        this.prefConfig = prefConfig;
+    }
+
     @Override
     public boolean onTouchEvent(android.view.MotionEvent event) {
-        if (absoluteTouchManager != null) {
-            return absoluteTouchManager.handleTouchEvent(event, this);
+        if (absoluteTouchManager != null && prefConfig != null && prefConfig.absoluteMouseMode) {
+            absoluteTouchManager.handleTouchEvent(event, this);
+            return true;
         }
+
         return super.onTouchEvent(event);
     }
 
