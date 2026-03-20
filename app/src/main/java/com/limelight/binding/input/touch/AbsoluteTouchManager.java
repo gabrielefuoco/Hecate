@@ -21,7 +21,28 @@ public class AbsoluteTouchManager {
 
     // Lightweight internal class to store single touch data
     private static class TouchData {
-        float x, y, pressure, contactMajor, contactMinor, rotation;
+        float x, y, pressure, contactMajor, contactMinor;
+        short rotation;
+    }
+
+    private void cachePointerData(MotionEvent event, int pointerIndex) {
+        int pointerId = event.getPointerId(pointerIndex);
+        TouchData data = activePointers.get(pointerId);
+        if (data == null) {
+            data = new TouchData();
+            activePointers.put(pointerId, data);
+        }
+        data.x = event.getX(pointerIndex);
+        data.y = event.getY(pointerIndex);
+        data.pressure = event.getPressure(pointerIndex);
+        data.contactMajor = event.getTouchMajor(pointerIndex);
+        data.contactMinor = event.getTouchMinor(pointerIndex);
+        // Convert radians to degrees and cast to short
+        data.rotation = (short) Math.toDegrees(event.getOrientation(pointerIndex));
+    }
+
+    private void clearActivePointer(int pointerId) {
+        activePointers.remove(pointerId);
     }
 
     /**
@@ -32,39 +53,25 @@ public class AbsoluteTouchManager {
         int actionIndex = event.getActionIndex();
         int pointerId = event.getPointerId(actionIndex);
 
-        // Calculation of offsets to handle any black bars (letterboxing)
+        // Coordinated are normalized relative to the target view (stream)
         float offsetX = targetView.getX();
         float offsetY = targetView.getY();
-        
-        // View dimensions to normalize coordinates (if required by your protocol)
-        // float width = targetView.getWidth();
-        // float height = targetView.getHeight();
 
         switch (action) {
-            case MotionEvent.ACTION_DOWN:          // First finger touches the screen
-            case MotionEvent.ACTION_POINTER_DOWN: { // Additional finger touches the screen
-                TouchData data = new TouchData();
-                data.x = event.getX(actionIndex) - offsetX;
-                data.y = event.getY(actionIndex) - offsetY;
-                data.pressure = event.getPressure(actionIndex);
-                // You can also add contactMajor, contactMinor and rotation if your device supports them
-                
-                // Register the finger using its UNIQUE ID
-                activePointers.put(pointerId, data);
-
-                // Communicate to Windows: "New touch placed"
+            case MotionEvent.ACTION_DOWN:
+            case MotionEvent.ACTION_POINTER_DOWN:
+                cachePointerData(event, actionIndex);
+                TouchData data = activePointers.get(pointerId);
                 conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_DOWN, pointerId,
-                        data.x, data.y, data.pressure, 
+                        data.x - offsetX, data.y - offsetY, data.pressure,
                         data.contactMajor, data.contactMinor, data.rotation);
                 break;
-            }
 
             case MotionEvent.ACTION_MOVE: {
-                // For maximum fluidity, first send "historical" points (micro-movements 
-                // captured by the 120Hz/240Hz display between Android frames).
                 int historySize = event.getHistorySize();
                 int pointerCount = event.getPointerCount();
 
+                // Process historical points for maximum fluidity
                 for (int h = 0; h < historySize; h++) {
                     for (int i = 0; i < pointerCount; i++) {
                         int id = event.getPointerId(i);
@@ -73,48 +80,39 @@ public class AbsoluteTouchManager {
                             float hY = event.getHistoricalY(i, h) - offsetY;
                             float hP = event.getHistoricalPressure(i, h);
                             conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_MOVE, id,
-                                    hX, hY, hP, 0, 0, 0);
+                                    hX, hY, hP, 0.0f, 0.0f, (short)0);
                         }
                     }
                 }
 
-                // Then send current positions of all fingers on the screen
+                // Process current point
                 for (int i = 0; i < pointerCount; i++) {
                     int id = event.getPointerId(i);
-                    TouchData data = activePointers.get(id);
-                    
-                    if (data != null) {
-                        data.x = event.getX(i) - offsetX;
-                        data.y = event.getY(i) - offsetY;
-                        data.pressure = event.getPressure(i);
-
+                    if (activePointers.get(id) != null) {
+                        cachePointerData(event, i);
+                        TouchData moveData = activePointers.get(id);
                         conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_MOVE, id,
-                                data.x, data.y, data.pressure, 
-                                data.contactMajor, data.contactMinor, data.rotation);
+                                moveData.x - offsetX, moveData.y - offsetY, moveData.pressure,
+                                moveData.contactMajor, moveData.contactMinor, moveData.rotation);
                     }
                 }
                 break;
             }
 
-            case MotionEvent.ACTION_UP:          // Last finger left up
-            case MotionEvent.ACTION_POINTER_UP: { // One finger up (but others remain)
-                TouchData data = activePointers.get(pointerId);
-                if (data != null) {
-                    // Communicate to Windows: "Finger up" (Pressure forced to 0.0f)
+            case MotionEvent.ACTION_POINTER_UP:
+            case MotionEvent.ACTION_UP: {
+                TouchData upData = activePointers.get(pointerId);
+                if (upData != null) {
                     conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_UP, pointerId,
-                            data.x, data.y, 0.0f, 0, 0, 0);
-                    
-                    // FUNDAMENTAL: Remove finger from memory to avoid ghost touches
-                    activePointers.remove(pointerId);
+                            upData.x - offsetX, upData.y - offsetY, 0.0f, 0.0f, 0.0f, (short)0);
+                    clearActivePointer(pointerId);
                 }
                 break;
             }
 
-            case MotionEvent.ACTION_CANCEL: {
-                // Android interrupted the touch abnormally (e.g. app went background)
+            case MotionEvent.ACTION_CANCEL:
                 clearAllGhostTouches();
                 break;
-            }
         }
         return true;
     }
@@ -124,13 +122,12 @@ public class AbsoluteTouchManager {
      * To be called when the activity pauses or the stream stops.
      */
     public void clearAllGhostTouches() {
-        for (int i = 0; i < activePointers.size(); i++) {
-            int pointerId = activePointers.keyAt(i);
+        int size = activePointers.size();
+        for (int i = 0; i < size; i++) {
+            int id = activePointers.keyAt(i);
             TouchData data = activePointers.valueAt(i);
-            
-            // Force release event
-            conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_UP, pointerId,
-                    data.x, data.y, 0.0f, 0, 0, 0);
+            conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_UP, id,
+                    data.x, data.y, 0.0f, 0.0f, 0.0f, (short)0);
         }
         activePointers.clear();
     }
