@@ -21,12 +21,13 @@ public class AbsoluteTouchContext implements TouchContext {
     private static final float[] activePointerContactAreaMinor = new float[MAX_TOUCH_POINTS];
     private static final short[] activePointerRotation = new short[MAX_TOUCH_POINTS];
     private static final boolean[] pointerActive = new boolean[MAX_TOUCH_POINTS];
+    private static final Object POINTER_LOCK = new Object();
 
     static {
         initializePointerCache();
     }
 
-    private boolean cancelled;
+    private volatile boolean cancelled;
     private int pointerCount;
 
     private final NvConnection conn;
@@ -169,24 +170,22 @@ public class AbsoluteTouchContext implements TouchContext {
 
     @Override
     public void cancelTouch() {
-        if (cancelled) {
-            return;
-        }
-
-        synchronized (AbsoluteTouchContext.class) {
+        synchronized (POINTER_LOCK) {
+            if (cancelled) {
+                return;
+            }
             if (actionIndex >= 0 && actionIndex < MAX_TOUCH_POINTS && pointerActive[actionIndex]) {
                 conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_UP, actionIndex,
                         activePointerX[actionIndex], activePointerY[actionIndex],
                         0.0f, 0.0f, 0.0f, (short) 0);
                 resetPointerState(actionIndex);
             }
+            cancelled = true;
         }
-
-        cancelled = true;
     }
 
     public static void clearAllGhostTouches(NvConnection conn) {
-        synchronized (AbsoluteTouchContext.class) {
+        synchronized (POINTER_LOCK) {
             for (int pointerId = 0; pointerId < MAX_TOUCH_POINTS; pointerId++) {
                 if (!pointerActive[pointerId]) {
                     continue;
