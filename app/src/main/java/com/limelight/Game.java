@@ -3290,6 +3290,10 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
                 for (TouchContext touchContext : inputContextMap) {
                     touchContext.setPointerCount(pointerCount - 1);
                 }
+                if (isTouchScreen && pointerCount == 1) {
+                    // Last Android pointer is up. Force-release any stale host-side touch state.
+                    AbsoluteTouchContext.clearAllGhostTouches(conn);
+                }
                 if (actionIndex == 0 && pointerCount > 1 && !context.isCancelled()) {
                     // The original secondary touch now becomes primary
                     int pointer1X = (int)event.getX(1);

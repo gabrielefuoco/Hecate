@@ -169,17 +169,34 @@ public class AbsoluteTouchContext implements TouchContext {
 
     @Override
     public void cancelTouch() {
-        cancelled = true;
-        for (int pointerId = 0; pointerId < MAX_TOUCH_POINTS; pointerId++) {
-            if (!pointerActive[pointerId]) {
-                continue;
-            }
+        if (cancelled) {
+            return;
+        }
 
-            conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_UP, pointerId,
-                    activePointerX[pointerId], activePointerY[pointerId],
-                    activePointerPressure[pointerId], activePointerContactAreaMajor[pointerId],
-                    activePointerContactAreaMinor[pointerId], activePointerRotation[pointerId]);
-            resetPointerState(pointerId);
+        synchronized (AbsoluteTouchContext.class) {
+            if (actionIndex >= 0 && actionIndex < MAX_TOUCH_POINTS && pointerActive[actionIndex]) {
+                conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_UP, actionIndex,
+                        activePointerX[actionIndex], activePointerY[actionIndex],
+                        0.0f, 0.0f, 0.0f, (short) 0);
+                resetPointerState(actionIndex);
+            }
+        }
+
+        cancelled = true;
+    }
+
+    public static void clearAllGhostTouches(NvConnection conn) {
+        synchronized (AbsoluteTouchContext.class) {
+            for (int pointerId = 0; pointerId < MAX_TOUCH_POINTS; pointerId++) {
+                if (!pointerActive[pointerId]) {
+                    continue;
+                }
+
+                conn.sendTouchEvent(MoonBridge.LI_TOUCH_EVENT_UP, pointerId,
+                        activePointerX[pointerId], activePointerY[pointerId],
+                        0.0f, 0.0f, 0.0f, (short) 0);
+                resetPointerState(pointerId);
+            }
         }
     }
 
