@@ -80,7 +80,7 @@ public class StreamContainer extends FrameLayout implements SurfaceHolder.Callba
         LayoutParams childParams = new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT);
 
         // Always craete a surface view as a Workaround for the sizing issue of GLSurfaceView
-        mSurfaceView = new SurfaceView(context);
+        mSurfaceView = new StreamView(context);
         addView(mSurfaceView, childParams);
 
         if (renderMode != StreamMode.MODE_2D) {
@@ -155,6 +155,15 @@ public class StreamContainer extends FrameLayout implements SurfaceHolder.Callba
 
     public void setCommitTextEnabled(boolean enabled) {
         this.commitTextEnabled = enabled;
+        if (mSurfaceView instanceof StreamView) {
+            ((StreamView) mSurfaceView).setCommitTextEnabled(enabled);
+        }
+    }
+
+    public void setAbsoluteTouchManager(com.limelight.binding.input.touch.AbsoluteTouchManager manager) {
+        if (mSurfaceView instanceof StreamView) {
+            ((StreamView) mSurfaceView).setAbsoluteTouchManager(manager);
+        }
     }
 
     @Override

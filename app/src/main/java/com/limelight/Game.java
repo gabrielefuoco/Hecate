@@ -301,6 +301,8 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
     private ImageButton overlayToggleButton;
     private float floatingButtonDX, floatingButtonDY;
     private boolean isButtonMoving = false;
+    private com.limelight.binding.input.touch.AbsoluteTouchManager absoluteTouchManager;
+
     private static final float CLICK_ACTION_THRESHOLD = 5;
     private float floatingButtonStartX, floatingButtonStartY;
 
@@ -826,6 +828,11 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             if (prefConfig.enableFullExDisplay && onExternelDisplay) {
                 requestFocusToExternalDisplayControl(this);
                 listenForExternalDisplayRemoval();
+            }
+
+            if (prefConfig.enableMultiTouchScreen) {
+                absoluteTouchManager = new com.limelight.binding.input.touch.AbsoluteTouchManager(conn);
+                streamContainer.setAbsoluteTouchManager(absoluteTouchManager);
             }
 
             // Initialize touch contexts based on preferences
@@ -1755,6 +1762,10 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
         }
 
         super.onPause();
+
+        if (absoluteTouchManager != null) {
+            absoluteTouchManager.clearAllGhostTouches();
+        }
     }
 
     @Override
@@ -3479,6 +3490,12 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             updatePipAutoEnter();
 
             controllerHandler.stop();
+
+            if (absoluteTouchManager != null) {
+                absoluteTouchManager.clearAllGhostTouches();
+                absoluteTouchManager = null;
+                streamContainer.setAbsoluteTouchManager(null);
+            }
 
             // Update GameManager state to indicate we're no longer in game
             UiHelper.notifyStreamEnded(this);

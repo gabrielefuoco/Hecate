@@ -21,6 +21,20 @@ public class StreamView extends SurfaceView {
     // commitText() events (e.g. swipe typing). Default disabled.
     private boolean commitTextEnabled = false;
 
+    private com.limelight.binding.input.touch.AbsoluteTouchManager absoluteTouchManager;
+
+    public void setAbsoluteTouchManager(com.limelight.binding.input.touch.AbsoluteTouchManager manager) {
+        this.absoluteTouchManager = manager;
+    }
+
+    @Override
+    public boolean onTouchEvent(android.view.MotionEvent event) {
+        if (absoluteTouchManager != null) {
+            return absoluteTouchManager.handleTouchEvent(event, this);
+        }
+        return super.onTouchEvent(event);
+    }
+
     public void setDesiredAspectRatio(double aspectRatio) {
         this.desiredAspectRatio = aspectRatio;
     }
