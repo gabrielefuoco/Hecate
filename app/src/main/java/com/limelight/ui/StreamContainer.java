@@ -169,6 +169,12 @@ public class StreamContainer extends FrameLayout implements SurfaceHolder.Callba
         }
     }
 
+    public void setGameGestures(GameGestures gameGestures) {
+        if (mSurfaceView instanceof StreamView) {
+            ((StreamView) mSurfaceView).setGameGestures(gameGestures);
+        }
+    }
+
     @Override
     public boolean onKeyPreIme(int keyCode, KeyEvent event) {
         if (mInputCallbacks != null) {

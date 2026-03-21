@@ -833,6 +833,7 @@ public class Game extends AppCompatActivity implements SurfaceHolder.Callback,
             if (prefConfig.enableMultiTouchScreen) {
                 absoluteTouchManager = new com.limelight.binding.input.touch.AbsoluteTouchManager(conn);
                 streamContainer.setAbsoluteTouchManager(absoluteTouchManager);
+                streamContainer.setGameGestures(this);
             }
 
             // Initialize touch contexts based on preferences

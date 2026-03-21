@@ -24,6 +24,17 @@ public class StreamView extends SurfaceView {
     private com.limelight.binding.input.touch.AbsoluteTouchManager absoluteTouchManager;
     private com.limelight.preferences.PreferenceConfiguration prefConfig;
 
+    // Variabili per la gesture della tastiera in Absolute Mode
+    private GameGestures gameGestures;
+    private boolean isTrackingEdgeSwipe = false;
+    private float startY1, startY2;
+    private static final int BOTTOM_EDGE_THRESHOLD_PX = 150;
+    private static final int SWIPE_UP_THRESHOLD_PX = 200;
+
+    public void setGameGestures(GameGestures gameGestures) {
+        this.gameGestures = gameGestures;
+    }
+
     public void setAbsoluteTouchManager(com.limelight.binding.input.touch.AbsoluteTouchManager manager) {
         this.absoluteTouchManager = manager;
     }
@@ -35,6 +46,36 @@ public class StreamView extends SurfaceView {
     @Override
     public boolean onTouchEvent(android.view.MotionEvent event) {
         if (absoluteTouchManager != null && prefConfig != null && prefConfig.absoluteMouseMode) {
+
+            int action = event.getActionMasked();
+
+            // --- INIZIO GESTURE 2 DITA (Edge Swipe) ---
+            if (action == android.view.MotionEvent.ACTION_POINTER_DOWN && event.getPointerCount() == 2) {
+                float y1 = event.getY(0), y2 = event.getY(1);
+                // Se entrambe le dita partono dal bordo inferiore
+                if (y1 > getHeight() - BOTTOM_EDGE_THRESHOLD_PX && y2 > getHeight() - BOTTOM_EDGE_THRESHOLD_PX) {
+                    isTrackingEdgeSwipe = true;
+                    startY1 = y1; startY2 = y2;
+                }
+            }
+
+            if (action == android.view.MotionEvent.ACTION_MOVE && isTrackingEdgeSwipe && event.getPointerCount() == 2) {
+                // Se le dita sono salite oltre la soglia
+                if (startY1 - event.getY(0) > SWIPE_UP_THRESHOLD_PX && startY2 - event.getY(1) > SWIPE_UP_THRESHOLD_PX) {
+                    if (gameGestures != null) gameGestures.toggleKeyboard();
+
+                    isTrackingEdgeSwipe = false;
+                    absoluteTouchManager.clearAllGhostTouches(); // Alza le dita su Windows
+                    return true; // Consuma l'evento per non mandarlo al PC
+                }
+            }
+
+            if (action == android.view.MotionEvent.ACTION_UP || action == android.view.MotionEvent.ACTION_POINTER_UP || action == android.view.MotionEvent.ACTION_CANCEL) {
+                isTrackingEdgeSwipe = false;
+            }
+            // --- FINE GESTURE 2 DITA ---
+
+            // Se la gesture non ha rubato il tocco, invia tutto al PC (inclusi i 3/4 dita)
             absoluteTouchManager.handleTouchEvent(event, this);
             return true;
         }
